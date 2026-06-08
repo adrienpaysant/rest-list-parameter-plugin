@@ -1,13 +1,17 @@
 package io.jenkins.plugins.restlistparam;
 
+import com.cloudbees.plugins.credentials.common.StandardCredentials;
 import io.jenkins.plugins.restlistparam.logic.RestValueService;
 import io.jenkins.plugins.restlistparam.model.MimeType;
 import io.jenkins.plugins.restlistparam.model.ValueItem;
 import io.jenkins.plugins.restlistparam.model.ResultContainer;
 import io.jenkins.plugins.restlistparam.model.ValueOrder;
+import okhttp3.Headers;
 import org.junit.jupiter.api.Test;
 
+import java.lang.reflect.Method;
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -46,5 +50,17 @@ class RestValueServiceTest {
     assertNotNull(test);
     assertTrue(test.getErrorMsg().isPresent());
     assertEquals(0, test.getValue().size());
+  }
+
+  @Test
+  void sendsCustomHeader() throws Exception {
+    Method buildHeaders = RestValueService.class.getDeclaredMethod("buildHeaders",
+      StandardCredentials.class, MimeType.class, Map.class);
+    buildHeaders.setAccessible(true);
+
+    Headers headers = (Headers) buildHeaders.invoke(null, null, MimeType.APPLICATION_JSON,
+      Map.of("X-API-Key", "static-token"));
+
+    assertEquals("static-token", headers.get("X-API-Key"));
   }
 }

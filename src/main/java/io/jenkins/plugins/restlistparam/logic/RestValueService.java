@@ -60,8 +60,23 @@ public class RestValueService {
                                                      final String filter,
                                                      final ValueOrder order)
   {
+    return get(restEndpoint, credentials, mimeType, cacheTime, valueExpression, displayExpression, filter, order,
+      Collections.emptyMap());
+  }
+
+  public static ResultContainer<List<ValueItem>> get(final String restEndpoint,
+                                                     final StandardCredentials credentials,
+                                                     final MimeType mimeType,
+                                                     final Integer cacheTime,
+                                                     final String valueExpression,
+                                                     final String displayExpression,
+                                                     final String filter,
+                                                     final ValueOrder order,
+                                                     final Map<String, String> customHeaders)
+  {
     ResultContainer<List<ValueItem>> valueList = new ResultContainer<>(Collections.emptyList());
-    ResultContainer<String> rawValues = getValueStringFromRestEndpoint(restEndpoint, credentials, mimeType, cacheTime);
+    ResultContainer<String> rawValues = getValueStringFromRestEndpoint(restEndpoint, credentials, mimeType, cacheTime,
+      customHeaders);
     Optional<String> rawValueError = rawValues.getErrorMsg();
 
     if (!rawValueError.isPresent()) {
@@ -130,7 +145,8 @@ public class RestValueService {
   private static ResultContainer<String> getValueStringFromRestEndpoint(final String restEndpoint,
                                                                         final StandardCredentials credentials,
                                                                         final MimeType mimeType,
-                                                                        final Integer cacheTime)
+                                                                        final Integer cacheTime,
+                                                                        final Map<String, String> customHeaders)
   {
     ResultContainer<String> container = new ResultContainer<>("");
 
@@ -138,7 +154,7 @@ public class RestValueService {
     Request request = new Request.Builder()
       .url(restEndpoint)
       .cacheControl(OkHttpUtils.getCacheControl(cacheTime))
-      .headers(buildHeaders(credentials, mimeType))
+      .headers(buildHeaders(credentials, mimeType, customHeaders))
       .build();
 
     try (Response response = client.newCall(request).execute()) {
@@ -187,13 +203,29 @@ public class RestValueService {
    * @return OKHttp headers to be applied to the REST/Web request
    */
   private static Headers buildHeaders(final StandardCredentials credentials,
-                                      final MimeType mimeType)
+                                      final MimeType mimeType,
+                                      final Map<String, String> customHeaders)
   {
     Headers.Builder headBuilder = new Headers.Builder()
       .add(HTTPHeaders.ACCEPT, mimeType.getMime());
 
     if (credentials != null) {
       headBuilder.add(HTTPHeaders.AUTHORIZATION, buildAuthTypeWithCredential(credentials));
+    }
+
+    if (customHeaders != null) {
+      for (Map.Entry<String, String> header : customHeaders.entrySet()) {
+        if (header.getKey() != null && !header.getKey().trim().isEmpty()
+          && header.getValue() != null && !header.getValue().isEmpty())
+        {
+          try {
+            headBuilder.set(header.getKey().trim(), header.getValue());
+          }
+          catch (IllegalArgumentException ex) {
+            log.fine(Messages.RLP_RestValueService_fine_IgnoringInvalidCustomHeader(header.getKey()));
+          }
+        }
+      }
     }
 
     return headBuilder.build();

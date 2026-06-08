@@ -52,6 +52,10 @@
       <f:entry title="${%parameter.enableValidation}" field="enableValidation">
         <f:checkbox default="true" />
       </f:entry>
+
+      <f:entry title="${%parameter.customHeaders}" field="customHeaders">
+        <f:repeatableProperty field="customHeaders" add="${%parameter.customHeaders.add}" />
+      </f:entry>
     </f:section>
   </f:advanced>
 
