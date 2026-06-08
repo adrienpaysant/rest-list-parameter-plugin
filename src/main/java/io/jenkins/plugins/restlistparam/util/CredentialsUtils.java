@@ -54,6 +54,28 @@ public class CredentialsUtils {
       .includeCurrentValue(credentialsId);
   }
 
+  public static ListBoxModel doFillStringCredentialsIdItems(final Item context,
+                                                            final String credentialsId)
+  {
+    if ((context == null && !Jenkins.get().hasPermission(Jenkins.ADMINISTER))
+      || (context != null
+      && !context.hasPermission(Item.EXTENDED_READ)
+      && !context.hasPermission(CredentialsProvider.USE_ITEM)))
+    {
+      log.info(Messages.RLP_CredentialsUtils_info_NoPermission());
+      return new StandardListBoxModel().includeCurrentValue(credentialsId);
+    }
+    return new StandardListBoxModel()
+      .includeEmptyValue()
+      .includeMatchingAs(
+        context instanceof Queue.Task ? Tasks.getAuthenticationOf((Queue.Task) context) : ACL.SYSTEM,
+        context,
+        StringCredentials.class,
+        Collections.emptyList(),
+        CredentialsMatchers.instanceOf(StringCredentials.class))
+      .includeCurrentValue(credentialsId);
+  }
+
   public static FormValidation doCheckCredentialsId(final Item context,
                                                     final String credentialsId)
   {
@@ -94,5 +116,22 @@ public class CredentialsUtils {
         CredentialsMatchers.instanceOf(StringCredentials.class),
         CredentialsMatchers.instanceOf(StandardUsernamePasswordCredentials.class)));
     return Optional.ofNullable(CredentialsMatchers.firstOrNull(lookupCredentials, allOf));
+  }
+
+  public static Optional<StringCredentials> findStringCredentials(final Item context,
+                                                                  final String credentialsId)
+  {
+    if (credentialsId == null || credentialsId.isBlank()) {
+      return Optional.empty();
+    }
+    List<StringCredentials> lookupCredentials = CredentialsProvider.lookupCredentials(
+      StringCredentials.class,
+      context,
+      context instanceof Queue.Task ? Tasks.getAuthenticationOf((Queue.Task)context) : ACL.SYSTEM,
+      Collections.emptyList());
+    CredentialsMatcher matcher = CredentialsMatchers.allOf(
+      CredentialsMatchers.withId(credentialsId),
+      CredentialsMatchers.instanceOf(StringCredentials.class));
+    return Optional.ofNullable(CredentialsMatchers.firstOrNull(lookupCredentials, matcher));
   }
 }

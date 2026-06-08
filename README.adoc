@@ -31,6 +31,7 @@ Release notes can be found in the link:https://github.com/jenkinsci/rest-list-pa
 
 * Specify any REST/Web endpoint that returns either a Json or XML response with values to select from for a build
 * Authenticate against the endpoint if required (either with `BASIC` or `BEARER` authentication)
+* Add custom HTTP headers to REST requests
 * Filter/Pars the values of the web response with Json-Path or xPath (depending on MIME type)
 * Set a per-selected default value (as long as that value is within the received value list)
 * User-friendly error communication
@@ -112,6 +113,43 @@ Depending on the authentication requirement for the REST/Web endpoint there are 
 
 IMPORTANT: The Authentication header will be build and added based on the type of the selected credential type.
 
+[#custom-headers]
+=== Custom HTTP headers
+
+Custom HTTP headers can be added from the parameter's advanced configuration.
+This is useful for APIs that require headers such as `X-API-Key`, `X-Auth-Token`, or a custom `Authorization` format that is not covered by the built-in Basic or Bearer authentication support.
+
+Each custom header entry supports:
+
+* `Header name` - for example `X-API-Key`, `X-Auth-Token`, or `Authorization`
+* `Static value` - stored by Jenkins as a `Secret`
+* `Secret Text credential` - recommended for API keys, tokens, and other sensitive values
+* `Value prefix` - optional text prepended to the static value or credential value, for example `Token `
+
+For sensitive header values, create a Jenkins credential of type `Secret text` and select it in the custom header row.
+This keeps tokens out of the job configuration and allows credentials to be rotated centrally.
+
+.Examples
+[cols="1,1,1"]
+|===
+|Header name |Credential / value |Resulting request header
+
+|`X-API-Key`
+|Secret Text credential `my-api-key`
+|`X-API-Key: ****`
+
+|`X-Auth-Token`
+|Secret Text credential `my-auth-token`
+|`X-Auth-Token: ****`
+
+|`Authorization`
+|Value prefix `CustomFormat ` plus Secret Text credential `custom-auth-token`
+|`Authorization: CustomFormat ****`
+|===
+
+Custom headers are applied after the default `Accept` header and the optional authentication header from `Credential ID`.
+If a custom `Authorization` header is configured, it overrides the default Basic or Bearer authentication header.
+
 [#validation]
 === Parameter Config Validation
 
@@ -171,7 +209,11 @@ pipeline {
       cacheTime: 10,    // optional
       defaultValue: '', // optional
       filter: '.*',     // optional
-      valueOrder: 'ASC' // optional
+      valueOrder: 'ASC', // optional
+      customHeaders: [   // optional
+        [name: 'X-API-Key', credentialId: 'example-api-key'],
+        [name: 'Authorization', credentialId: 'example-auth-token', valuePrefix: 'CustomFormat ']
+      ]
     )
   }
 

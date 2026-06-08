@@ -11,6 +11,7 @@ import hudson.model.SimpleParameterDefinition;
 import hudson.util.FormValidation;
 import hudson.util.ListBoxModel;
 import io.jenkins.plugins.restlistparam.logic.RestValueService;
+import io.jenkins.plugins.restlistparam.model.CustomHeader;
 import io.jenkins.plugins.restlistparam.model.MimeType;
 import io.jenkins.plugins.restlistparam.model.ResultContainer;
 import io.jenkins.plugins.restlistparam.model.ValueOrder;
@@ -25,7 +26,9 @@ import org.kohsuke.stapler.verb.POST;
 
 import javax.annotation.Nonnull;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 
@@ -46,6 +49,7 @@ public final class RestListParameterDefinition extends SimpleParameterDefinition
   private boolean enableValidation = true;
   private String errorMsg;
   private List<ValueItem> values;
+  private List<CustomHeader> customHeaders;
 
   @DataBoundConstructor
   public RestListParameterDefinition(final String name,
@@ -89,6 +93,7 @@ public final class RestListParameterDefinition extends SimpleParameterDefinition
     this.allowEmptyValue = allowEmptyValue;
     this.errorMsg = "";
     this.values = Collections.emptyList();
+    this.customHeaders = Collections.emptyList();
   }
 
   private RestListParameterDefinition(final String name,
@@ -104,7 +109,8 @@ public final class RestListParameterDefinition extends SimpleParameterDefinition
                                       final String defaultValue,
                                       final boolean allowEmptyValue,
                                       final boolean enableValidation,
-                                      final List<ValueItem> values)
+                                      final List<ValueItem> values,
+                                      final List<CustomHeader> customHeaders)
   {
     super(name);
     setDescription(description);
@@ -123,6 +129,7 @@ public final class RestListParameterDefinition extends SimpleParameterDefinition
     this.enableValidation = enableValidation;
     this.errorMsg = "";
     this.values = values;
+    this.customHeaders = customHeaders != null ? customHeaders : Collections.emptyList();
   }
 
   public String getRestEndpoint() {
@@ -207,6 +214,15 @@ public final class RestListParameterDefinition extends SimpleParameterDefinition
     this.enableValidation = enableValidation;
   }
 
+  public List<CustomHeader> getCustomHeaders() {
+    return customHeaders != null ? customHeaders : Collections.emptyList();
+  }
+
+  @DataBoundSetter
+  public void setCustomHeaders(final List<CustomHeader> customHeaders) {
+    this.customHeaders = customHeaders != null ? customHeaders : Collections.emptyList();
+  }
+
   void setErrorMsg(final String errorMsg) {
     this.errorMsg = errorMsg;
   }
@@ -232,7 +248,8 @@ public final class RestListParameterDefinition extends SimpleParameterDefinition
       getValueExpression(),
       getDisplayExpression(),
       getFilter(),
-      getValueOrder());
+      getValueOrder(),
+      resolveCustomHeaders(context));
 
     setErrorMsg(container.getErrorMsg().orElse(""));
     values = container.getValue();
@@ -247,7 +264,7 @@ public final class RestListParameterDefinition extends SimpleParameterDefinition
         getName(), getDescription(), getRestEndpoint(), getCredentialId(), getMimeType(),
         getValueExpression(), getDisplayExpression(), getValueOrder(), getFilter(), getCacheTime(),
         ValueResolver.parseDisplayValue(getMimeType(), value.getValue(), displayExpression),
-        isAllowEmptyValue(), isEnableValidation(), getValues());
+        isAllowEmptyValue(), isEnableValidation(), getValues(), getCustomHeaders());
     }
     else {
       return this;
@@ -343,6 +360,20 @@ public final class RestListParameterDefinition extends SimpleParameterDefinition
       return false;
     }
     return Objects.equals(defaultValue, other.defaultValue);
+  }
+
+  private Map<String, String> resolveCustomHeaders(final Item context) {
+    Map<String, String> headers = new LinkedHashMap<>();
+    for (CustomHeader customHeader : getCustomHeaders()) {
+      if (customHeader == null) {
+        continue;
+      }
+      String value = customHeader.resolve(context);
+      if (value != null) {
+        headers.put(customHeader.getName().trim(), value);
+      }
+    }
+    return headers;
   }
 
   @Symbol({"RESTList", "RestList", "RESTListParam"})
@@ -476,7 +507,8 @@ public final class RestListParameterDefinition extends SimpleParameterDefinition
         valueExpression,
         !displayExpression.isBlank() ? displayExpression : "$",
         filter,
-        valueOrder);
+        valueOrder,
+        Collections.emptyMap());
 
       Optional<String> errorMsg = container.getErrorMsg();
       List<ValueItem> values = container.getValue();

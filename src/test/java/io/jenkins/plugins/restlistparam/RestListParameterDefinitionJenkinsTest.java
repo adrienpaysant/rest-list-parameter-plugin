@@ -1,19 +1,35 @@
 package io.jenkins.plugins.restlistparam;
 
+import com.cloudbees.plugins.credentials.CredentialsScope;
+import com.cloudbees.plugins.credentials.SystemCredentialsProvider;
+import com.sun.net.httpserver.HttpExchange;
+import com.sun.net.httpserver.HttpServer;
 import hudson.model.Descriptor;
 import hudson.model.ParameterDefinition;
 import hudson.model.StringParameterValue;
+import hudson.util.Secret;
+import io.jenkins.plugins.restlistparam.model.CustomHeader;
 import io.jenkins.plugins.restlistparam.model.MimeType;
 import io.jenkins.plugins.restlistparam.model.ValueOrder;
 import jenkins.model.Jenkins;
+import org.jenkinsci.plugins.plaincredentials.impl.StringCredentialsImpl;
 import org.jenkinsci.plugins.structs.SymbolLookup;
 import org.jenkinsci.plugins.structs.describable.DescribableModel;
 import org.junit.jupiter.api.Test;
 import org.jvnet.hudson.test.JenkinsRule;
 import org.jvnet.hudson.test.junit.jupiter.WithJenkins;
 
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.ObjectOutputStream;
+import java.net.InetSocketAddress;
+import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -181,5 +197,108 @@ class RestListParameterDefinitionJenkinsTest {
 
     RestListParameterDefinition def = model.instantiate(args);
     assertFalse(def.isEnableValidation(), "enableValidation DataBoundSetter not applied");
+  }
+
+  @Test
+  void pipelineDslAcceptsCustomHeaders(JenkinsRule r) throws Exception {
+    DescribableModel<RestListParameterDefinition> model = new DescribableModel<>(RestListParameterDefinition.class);
+    Map<String, Object> args = new HashMap<>();
+    args.put("name", "VERSION");
+    args.put("description", "pick a version");
+    args.put("restEndpoint", "http://127.0.0.1:1/none");
+    args.put("credentialId", "");
+    args.put("mimeType", "APPLICATION_JSON");
+    args.put("valueExpression", "$.tags");
+    args.put("displayExpression", "$");
+
+    Map<String, Object> authHeader = new HashMap<>();
+    authHeader.put("name", "Authorization");
+    authHeader.put("credentialId", "svc_netbox_prd");
+    authHeader.put("valuePrefix", "Token ");
+    args.put("customHeaders", Arrays.asList(authHeader));
+
+    RestListParameterDefinition def = model.instantiate(args);
+    List<CustomHeader> customHeaders = def.getCustomHeaders();
+    assertEquals(1, customHeaders.size());
+    assertEquals("Authorization", customHeaders.get(0).getName());
+    assertEquals("svc_netbox_prd", customHeaders.get(0).getCredentialId());
+    assertEquals("Token ", customHeaders.get(0).getValuePrefix());
+  }
+
+  @Test
+  void secretTextCredentialFeedsCustomHeader(JenkinsRule r) throws Exception {
+    SystemCredentialsProvider.getInstance().getCredentials().add(
+      new StringCredentialsImpl(CredentialsScope.GLOBAL, "custom-token", "custom token",
+        Secret.fromString("credential-token")));
+    SystemCredentialsProvider.getInstance().save();
+
+    try (HeaderCaptureServer server = new HeaderCaptureServer()) {
+      RestListParameterDefinition def = new RestListParameterDefinition(
+        "p", "d", server.url(), "", MimeType.APPLICATION_JSON, "$.*.name", "$",
+        ValueOrder.NONE, ".*", 0, "", false);
+      CustomHeader header = new CustomHeader("X-Auth-Token");
+      header.setCredentialId("custom-token");
+      header.setValuePrefix("Token ");
+      def.setCustomHeaders(Collections.singletonList(header));
+
+      assertEquals(3, def.getValues().size());
+      assertEquals("Token credential-token", server.header("X-Auth-Token"));
+    }
+  }
+
+  @Test
+  void definitionWithCustomHeadersIsSerializable(JenkinsRule r) throws Exception {
+    RestListParameterDefinition def = new RestListParameterDefinition(
+      "p", "d", "http://127.0.0.1:1/none", "", MimeType.APPLICATION_JSON, "$.*.name", "$",
+      ValueOrder.NONE, ".*", 0, "", false);
+    CustomHeader header = new CustomHeader("Authorization");
+    header.setCredentialId("custom-token");
+    header.setValuePrefix("Token ");
+    def.setCustomHeaders(Collections.singletonList(header));
+
+    try (ObjectOutputStream out = new ObjectOutputStream(new ByteArrayOutputStream())) {
+      out.writeObject(def);
+    }
+  }
+
+  @Test
+  void customHeadersDefaultToEmpty(JenkinsRule r) {
+    RestListParameterDefinition def = new RestListParameterDefinition(
+      "p", "d", "https://example.invalid", "", MimeType.APPLICATION_JSON, "$.*", "$");
+    assertTrue(def.getCustomHeaders().isEmpty());
+  }
+
+  private static class HeaderCaptureServer implements AutoCloseable {
+    private final HttpServer server;
+    private final AtomicReference<com.sun.net.httpserver.Headers> lastHeaders = new AtomicReference<>();
+
+    HeaderCaptureServer() throws IOException {
+      server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+      server.createContext("/", this::respond);
+      server.start();
+    }
+
+    String url() {
+      return "http://127.0.0.1:" + server.getAddress().getPort() + "/";
+    }
+
+    String header(final String name) {
+      com.sun.net.httpserver.Headers headers = lastHeaders.get();
+      return headers != null ? headers.getFirst(name) : null;
+    }
+
+    private void respond(final HttpExchange exchange) throws IOException {
+      lastHeaders.set(exchange.getRequestHeaders());
+      byte[] response = TestConst.validTestJson.getBytes(StandardCharsets.UTF_8);
+      exchange.getResponseHeaders().set("Content-Type", "application/json");
+      exchange.sendResponseHeaders(200, response.length);
+      exchange.getResponseBody().write(response);
+      exchange.close();
+    }
+
+    @Override
+    public void close() {
+      server.stop(0);
+    }
   }
 }
