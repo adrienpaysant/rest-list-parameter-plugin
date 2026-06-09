@@ -34,7 +34,7 @@ public class CustomHeader extends AbstractDescribableImpl<CustomHeader> implemen
 
   @DataBoundConstructor
   public CustomHeader(final String name) {
-    this.name = name;
+    this.name = name != null ? name.trim() : null;
     this.credentialId = "";
     this.valuePrefix = "";
   }
