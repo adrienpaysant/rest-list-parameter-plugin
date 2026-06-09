@@ -1,7 +1,9 @@
 package io.jenkins.plugins.restlistparam;
 
 import com.cloudbees.plugins.credentials.common.StandardCredentials;
+import hudson.util.Secret;
 import io.jenkins.plugins.restlistparam.logic.RestValueService;
+import io.jenkins.plugins.restlistparam.model.CustomHeader;
 import io.jenkins.plugins.restlistparam.model.MimeType;
 import io.jenkins.plugins.restlistparam.model.ValueItem;
 import io.jenkins.plugins.restlistparam.model.ResultContainer;
@@ -62,5 +64,14 @@ class RestValueServiceTest {
       Map.of("X-API-Key", "static-token"));
 
     assertEquals("static-token", headers.get("X-API-Key"));
+  }
+
+  @Test
+  void trimsCustomHeaderNameOnConstruction() {
+    CustomHeader header = new CustomHeader("Authorization ");
+    header.setValue(Secret.fromString("token"));
+
+    assertEquals("Authorization", header.getName());
+    assertEquals("token", header.resolve(null));
   }
 }
